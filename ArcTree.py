@@ -1,14 +1,25 @@
-#!?
+#?
 # Import the os module, for the os.walk function
 import os
 import re
 import sys
+from alx import dbg, pause
 import subprocess
 import datetime
 import argparse
 
 max_ret_code = 0
 saved_n2d_rc = 0
+
+vertical_1 = '\u2016' # '‖'
+vertical_2 = '\u2551' # '║'
+slash_1 = '\u2044' # '⁄'
+slash_2 = '\u2215' # '∕'
+backslash_1 = '\uFF3C' # '＼'  U+FF3C: FULLWIDTH REVERSE SOLIDUS
+backslash_2 = '\u29F5' # '⧵'   U+29F5: REVERSE SOLIDUS OPERATOR
+backslash_3 = '\u29F9' # '⧹'
+
+
 
 fs_limit: int = 4294963200  #file size limit for Fat 32 minus 4K: int(0b11111111111111111111000000000000) = 4294963200
 
@@ -178,18 +189,18 @@ def is_root_dir(dirpath):
     return re.search(r"^[a-zA-Z]:\\$", dirpath)
 
 
-def get_drive_sign(dirpath):
-    return dirpath[0:1].upper() + "$"
+def get_drive_sign(dir_path):
+    return dir_path[0:1].upper() + "$"
 
 
-def get_isempty_sign(dir, flist):
+def get_is_empty_sign(dir_path, flist):
     if len(flist) == 0:
         return "[:._]"
 
     if is_dir_empty(flist):
         return "[:..]"
 
-    _dir = os.path.basename(dir).lower()
+    _dir = os.path.basename(dir_path).lower()
     if (_dir == '.tmp.drivedownload') or (_dir == '.tmp.driveupload'):
         return "[:..]"
 
@@ -210,6 +221,14 @@ def get_time_stamp(flag):
         stamp = stamp[0:10] + " " + stamp[11:13] + ":" + stamp[14:16] + ":" + stamp[17:19]
     return stamp
 
+def delimit_path(path_str:str, slash_flag):
+    _path_list =  path_str.split('\\')
+    if slash_flag:
+        return backslash_1.join(_path_list)
+        #return path_part + slash_z1
+    else:
+        return "[" + "][".join(_path_list) + "]"
+        #return "[" + path_part + "]"
 
 def write_to_log(logfile_handle, logstring):
     print(logstring)
@@ -246,178 +265,193 @@ def get_arcfile_status_msg(dir_path, filename_without_ext, archiver_ret_code):
         return f'Archive File Exists: "{filename_with_path}"'
 
 
-theparser = argparse.ArgumentParser(description='Compress the folder tree per folder')
-theparser.add_argument('sourcePath',
-                       metavar='sourcePath',
-                       type=str,
-                       help='The path to Source tree top folder')
+the_parser = argparse.ArgumentParser(description='Compress the folder tree per folder')
+the_parser.add_argument('sourcePath',
+                        metavar='sourcePath',
+                        type=str,
+                        help='Path to the top folder of the source tree')
 
-theparser.add_argument('destPath',
-                       metavar='destPath',
-                       type=str,
-                       help='The path to folder wehere archive hase to be stored')
+the_parser.add_argument('destPath',
+                        metavar='destPath',
+                        type=str,
+                        help='Path to the destination folder where to save the archive')
 
-theparser.add_argument('-a',
-                       type=str,
-                       choices=['zip', 'rar', '7z'],
-                       help='Optional parameter to zpecify what archiver to use: zip, rar or 7z. Default is zip')
+the_parser.add_argument('-a',
+                        type=str,
+                        choices=['zip', 'rar', '7z'],
+                        help='An optional parameter to specify the archiver.'
+                             f' Use zip for {zip_dict[0][0]}.exe,'
+                             f' or rar for {rar_dict[0][0]}.exe,'
+                             f' or 7z for {z7_dict[0][0]}.exe. Default is rar.')
 
-args = theparser.parse_args()
+the_parser.add_argument('-s','--slash',
+                        action='store_true',
+                        help='Use slash in archive file name tas a path delimiter')
 
-curr_arc_dict = zip_dict
+if __name__ == '__main__': # don't need but let it be
 
-if args.a:
-    if args.a == 'rar':
-        curr_arc_dict = rar_dict
-    elif args.a == '7z':
-        curr_arc_dict = z7_dict
+    args = the_parser.parse_args()  # args is a Namespace type/class
+    dbg(args)
 
-start_dir = get_abs_path(args.sourcePath)
-argv_store_dir = get_abs_path(args.destPath)
-get_archiver_exe_path(curr_arc_dict[0][0])
+    curr_arc_dict = rar_dict
 
-if len(argv_store_dir) == 3 and argv_store_dir[2] == "\\":
-    store_dir = argv_store_dir[:-1]
-else:
-    store_dir = argv_store_dir
+    if args.a:
+        if args.a == 'rar':
+            curr_arc_dict = rar_dict
+        elif args.a == '7z':
+            curr_arc_dict = z7_dict
+        elif args.a == 'zip':
+            curr_arc_dict = z7_dict
 
-parent_dir = get_abs_path(start_dir + "\\..")
-start_dir_path_list = start_dir.split("\\")
+    start_dir = get_abs_path(args.sourcePath)
+    argv_store_dir = get_abs_path(args.destPath)
+    get_archiver_exe_path(curr_arc_dict[0][0])
 
-if is_root_dir(start_dir):
-    startdirname = get_drive_sign(start_dir)
-    preName = "[" + startdirname + "]"
-else:
-    startdirname = start_dir_path_list[len(start_dir_path_list) - 1]
-    preName = ""
-
-log_name = f"{startdirname}_{get_time_stamp('f')}_{curr_arc_dict[-1].capitalize()}Tree.Log"
-
-log_name_with_path = store_dir + '\\' + log_name
-
-log_file_handle = open(log_name_with_path, "w+", encoding='utf-8')
-
-mLine = (f":.. = {curr_arc_dict[0][0]} not launched: Folder ignored (.tmp.drivedownload, .tmp.driveupload or contains "
-         f"only \"desktop.ini\" and/or \"thumbs.db\" files")
-
-sLine = "_" * len(mLine)
-
-write_to_log(log_file_handle, sLine)
-write_to_log(log_file_handle, "")
-write_to_log(log_file_handle, f'{sys.argv[0]}:')
-write_to_log(log_file_handle, "")
-write_to_log(log_file_handle, f' Top Source folder: {start_dir}')
-write_to_log(log_file_handle, f' Arc Store  folder: {argv_store_dir}')
-write_to_log(log_file_handle, f' Log File name:     {log_name_with_path}')
-
-write_to_log(log_file_handle, sLine)
-
-write_to_log(log_file_handle, '')
-write_to_log(log_file_handle, 'Log Signs in square brackets:')
-write_to_log(log_file_handle, '')
-
-write_to_log(log_file_handle, f":>> = Script Started")
-write_to_log(log_file_handle, f":<< = Script Finished Succesfully")
-write_to_log(log_file_handle, f"!<< = Script Finished Succesfully, but the archiver reported errors or warnings")
-write_to_log(log_file_handle, f":-> = {curr_arc_dict[0][0]} Started")
-write_to_log(log_file_handle, f":=0 = {curr_arc_dict[0][0]} Finished with ErrorCode = 0")
-if curr_arc_dict[-2] > 0:
-    write_to_log(log_file_handle, f":={curr_arc_dict[-2]} = {curr_arc_dict[0][0]} Archiver Returned 'Nothing to do' "
-                                  f"ErrorCode={curr_arc_dict[-2]}")
-write_to_log(log_file_handle, f":!E = {curr_arc_dict[0][0]} Finished with ErrorCode = E (Where E = number from "
-                              f"1 to 255)")
-write_to_log(log_file_handle, f":._ = {curr_arc_dict[0][0]} not launched: Folder Empty")
-# mline is difened above
-write_to_log(log_file_handle, mLine)
-
-write_to_log(log_file_handle, sLine)
-
-write_to_log(log_file_handle, "")
-
-log_string = f"[:>>] {get_time_stamp('l')} Started: {sys.argv[0]} {sys.argv[1]} {sys.argv[2]}\n"
-write_to_log(log_file_handle, log_string)
-
-exe_file = get_archiver_exe_path(curr_arc_dict[0][0])
-
-for dirName, subdirList, fileList in os.walk(start_dir):
-
-    fulpath = os.path.abspath(dirName)
-    relpath = os.path.relpath(dirName, start=parent_dir)
-
-    fulpathlist = fulpath.split("\\")
-    relpathlist = relpath.split("\\")
-
-    emptyflag = get_isempty_sign(fulpath, fileList)
-
-    if emptyflag != "":
-        log_string = f"{emptyflag} {get_time_stamp('l')} {fulpath}\n"
-        write_to_log(log_file_handle, log_string)
+    if len(argv_store_dir) == 3 and argv_store_dir[2] == "\\":
+        store_dir = argv_store_dir[:-1]
     else:
+        store_dir = argv_store_dir
 
-        if is_root_dir(fulpath):
-            zipname = preName
+    parent_dir = get_abs_path(start_dir + "\\..")
+    start_dir_path_list = start_dir.split("\\")
+
+    if is_root_dir(start_dir):
+        start_dir_name = get_drive_sign(start_dir)
+        #preName = "[" + start_dir_name + "]"
+        preName = delimit_path(start_dir_name, args.slash) # 20.12.24
+    else:
+        start_dir_name = start_dir_path_list[len(start_dir_path_list) - 1]
+        preName = ""
+
+    log_name = f"{start_dir_name}_{get_time_stamp('f')}_{curr_arc_dict[-1].capitalize()}Tree.Log"
+
+    log_name_with_path = store_dir + '\\' + log_name
+
+    log_file_handle = open(log_name_with_path, "w+", encoding='utf-8')
+
+    mLine = (f":.. = {curr_arc_dict[0][0]} not launched: Folder ignored (.tmp.drivedownload, .tmp.driveupload or contains "
+             f"only \"desktop.ini\" and/or \"thumbs.db\" files")
+
+    sLine = "_" * len(mLine)
+
+    write_to_log(log_file_handle, sLine)
+    write_to_log(log_file_handle, "")
+    write_to_log(log_file_handle, f'{sys.argv[0]}:')
+    write_to_log(log_file_handle, "")
+    write_to_log(log_file_handle, f' Top Source folder: {start_dir}')
+    write_to_log(log_file_handle, f' Arc Store  folder: {argv_store_dir}')
+    write_to_log(log_file_handle, f' Log File name:     {log_name_with_path}')
+
+    write_to_log(log_file_handle, sLine)
+
+    write_to_log(log_file_handle, '')
+    write_to_log(log_file_handle, 'Log Signs in square brackets:')
+    write_to_log(log_file_handle, '')
+
+    write_to_log(log_file_handle, f":>> = Script Started")
+    write_to_log(log_file_handle, f":<< = Script Finished Successfully")
+    write_to_log(log_file_handle, f"!<< = Script Finished Successfully, but the archiver reported errors or warnings")
+    write_to_log(log_file_handle, f":-> = {curr_arc_dict[0][0]} Started")
+    write_to_log(log_file_handle, f":=0 = {curr_arc_dict[0][0]} Finished with ErrorCode = 0")
+    if curr_arc_dict[-2] > 0:
+        write_to_log(log_file_handle, f":={curr_arc_dict[-2]} = {curr_arc_dict[0][0]} Archiver Returned 'Nothing to do' "
+                                      f"ErrorCode={curr_arc_dict[-2]}")
+    write_to_log(log_file_handle, f":!E = {curr_arc_dict[0][0]} Finished with ErrorCode = E (Where E = number from "
+                                  f"1 to 255)")
+    write_to_log(log_file_handle, f":._ = {curr_arc_dict[0][0]} not launched: Folder Empty")
+    # mline is difened above
+    write_to_log(log_file_handle, mLine)
+
+    write_to_log(log_file_handle, sLine)
+
+    write_to_log(log_file_handle, "")
+
+    #log_string = f"[:>>] {get_time_stamp('l')} Started: {sys.argv[0]} {sys.argv[1]} {sys.argv[2]}\n"
+    log_string = f"[:>>] {get_time_stamp('l')} Started: {' '.join(sys.argv)}\n"
+    write_to_log(log_file_handle, log_string)
+
+    exe_file = get_archiver_exe_path(curr_arc_dict[0][0])
+
+    for dirName, subdirList, fileList in os.walk(start_dir):
+
+        full_path = os.path.abspath(dirName)
+        rel_path = os.path.relpath(dirName, start=parent_dir)
+
+        full_path_list = full_path.split("\\")
+        rel_path_list = rel_path.split("\\")
+
+        empty_flag = get_is_empty_sign(full_path, fileList)
+
+        if empty_flag != "":
+            log_string = f"{empty_flag} {get_time_stamp('l')} {full_path}\n"
+            write_to_log(log_file_handle, log_string)
         else:
-            zipname = preName + "[" + "][".join(relpathlist) + "]"
 
-        storPath = f'{store_dir}\\{zipname}.{curr_arc_dict[-1]}'
+            if is_root_dir(full_path):
+                arc_name = preName
+            else:
+                #arc_name = preName + "[" + "][".join(rel_path_list) + "]"
+                arc_name = preName + delimit_path(rel_path, args.slash)
 
-        if is_root_dir(fulpath):
-            what2zip = f'{relpath}\\{curr_arc_dict[-3]}'
+            storPath = f'{store_dir}\\{arc_name}.{curr_arc_dict[-1]}'
+
+            if is_root_dir(full_path):
+                what2zip = f'{rel_path}\\{curr_arc_dict[-3]}'
+            else:
+                what2zip = f'.\\{rel_path}\\{curr_arc_dict[-3]}'
+
+            os.chdir(parent_dir)  # ! Here!
+
+            cmd_list = curr_arc_dict[0].copy()
+            cmd_list.extend([storPath, what2zip])
+
+            cmdline = " ".join(cmd_list)
+
+            exe_list = cmd_list.copy()
+            exe_list[0] = exe_file
+
+            log_string = f"[:->] {get_time_stamp('l')} {os.getcwd()}>{cmdline}"
+            write_to_log(log_file_handle, log_string)
+            ###########################################################################################################
+            result = subprocess.run(exe_list, shell=False)
+            if result:
+                curr_ret_code = result.returncode
+                was_running_marker = True
+            else:
+                curr_ret_code = -1
+            ###########################################################################################################
+
+            file_existence_status_str = get_arcfile_status_msg(store_dir, arc_name, curr_ret_code)
+
+            if curr_ret_code == 0:
+                log_string = f"[:={curr_ret_code}] {get_time_stamp('l')} {file_existence_status_str}\n"
+            elif curr_ret_code == curr_arc_dict[-2]:
+                log_string = f"[:={curr_ret_code}] {get_time_stamp('l')} {arch_err_msg(curr_arc_dict, curr_ret_code)}, " \
+                             f"{file_existence_status_str}\n"
+                saved_n2d_rc = curr_arc_dict[-2]
+            else:
+                log_string = f"[:!{curr_ret_code}] {get_time_stamp('l')} {arch_err_msg(curr_arc_dict, curr_ret_code)}, " \
+                             f"{file_existence_status_str}\n"
+                if curr_ret_code > max_ret_code:
+                    max_ret_code = curr_ret_code
+            write_to_log(log_file_handle, log_string)
+
+    if was_running_marker:
+        if max_ret_code == 0:
+            if saved_n2d_rc == curr_arc_dict[-2]:
+                log_string = f"[!<<] {get_time_stamp('l')} Finished with \"Nothing to do\" warnings. Details:" \
+                             f" {log_name_with_path}"
+            else:
+                log_string = f"[:<<] {get_time_stamp('l')} Successfully Finished [RC={max_ret_code}]. Details: " \
+                             f"{log_name_with_path}"
         else:
-            what2zip = f'.\\{relpath}\\{curr_arc_dict[-3]}'
-
-        os.chdir(parent_dir)  # ! Here!
-
-        cmdlist = curr_arc_dict[0].copy()
-        cmdlist.extend([storPath, what2zip])
-
-        cmdline = " ".join(cmdlist)
-
-        exelist = cmdlist.copy()
-        exelist[0] = exe_file
-
-        log_string = f"[:->] {get_time_stamp('l')} {os.getcwd()}>{cmdline}"
-        write_to_log(log_file_handle, log_string)
-        ###########################################################################################################
-        result = subprocess.run(exelist, shell=False)
-        if result:
-            curr_ret_code = result.returncode
-            was_running_marker = True
-        else:
-            curr_ret_code = -1
-        ###########################################################################################################
-
-        file_existence_status_str = get_arcfile_status_msg(store_dir, zipname, curr_ret_code)
-
-        if curr_ret_code == 0:
-            log_string = f"[:={curr_ret_code}] {get_time_stamp('l')} {file_existence_status_str}\n"
-        elif curr_ret_code == curr_arc_dict[-2]:
-            log_string = f"[:={curr_ret_code}] {get_time_stamp('l')} {arch_err_msg(curr_arc_dict, curr_ret_code)}, " \
-                         f"{file_existence_status_str}\n"
-            saved_n2d_rc = curr_arc_dict[-2]
-        else:
-            log_string = f"[:!{curr_ret_code}] {get_time_stamp('l')} {arch_err_msg(curr_arc_dict, curr_ret_code)}, " \
-                         f"{file_existence_status_str}\n"
-            if curr_ret_code > max_ret_code:
-                max_ret_code = curr_ret_code
-        write_to_log(log_file_handle, log_string)
-
-if was_running_marker:
-    if max_ret_code == 0:
-        if saved_n2d_rc == curr_arc_dict[-2]:
-            log_string = f"[!<<] {get_time_stamp('l')} Finished with \"Nothing to do\" warnings. Details:" \
-                         f" {log_name_with_path}"
-        else:
-            log_string = f"[:<<] {get_time_stamp('l')} Successfully Finished [RC={max_ret_code}]. Details: " \
+            log_string = f"[!<<] {get_time_stamp('l')} Finished with highest error code: [{max_ret_code}]. Details: " \
                          f"{log_name_with_path}"
     else:
-        log_string = f"[!<<] {get_time_stamp('l')} Finished with highest error code: [{max_ret_code}]. Details: " \
-                     f"{log_name_with_path}"
-else:
-    log_string = f"[:<<] {get_time_stamp('l')} The archiver has never been launched. Details: {log_name_with_path}"
-    max_ret_code = err_not_run
+        log_string = f"[:<<] {get_time_stamp('l')} The archiver has never been launched. Details: {log_name_with_path}"
+        max_ret_code = err_not_run
 
-write_to_log(log_file_handle, log_string)
+    write_to_log(log_file_handle, log_string)
 
-log_file_handle.close()
-exit(max_ret_code)
+    log_file_handle.close()
+    exit(max_ret_code)
