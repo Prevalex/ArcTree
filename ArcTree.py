@@ -3,6 +3,8 @@
 import os
 import re
 import sys
+
+import alx
 from alx import dbg, pause
 import subprocess
 import datetime
@@ -23,20 +25,28 @@ backslash_3 = '\u29F9' # '⧹'
 
 fs_limit: int = 4294963200  #file size limit for Fat 32 minus 4K: int(0b11111111111111111111000000000000) = 4294963200
 
-err_invalid_arg = 101  # invalid arguments
-err_no_path = 102  # path not found
-err_no_dir = 103  # path is not a folder
-err_no_exe = 104  # archiver exe file not found in the OS Path
-err_not_run = 105  # archiver has been never run
+_err = alx.IndexBuilder(101)
+
+#err_invalid_arg = 101  # invalid arguments
+#err_no_path = 102  # path not found
+#err_no_dir = 103  # path is not a folder
+#err_no_exe = 104  # archiver exe file not found in the OS Path
+#err_not_run = 105  # archiver has been never run
+
+err_invalid_arg = _err('invalid arguments')
+err_no_path     = _err('path not found')
+err_no_dir      = _err('path is not a folder')
+err_no_exe      = _err('archiver exe file not found in the OS Path')
+err_not_run     = _err('archiver has been never run')
 
 was_running_marker = False
 
 ignore_names_list = ['desktop.ini', 'thumbs.db']
 
 zip_dict = {
-    -3: '*.*',
-    -2: 8,
-    -1: 'zip',
+    -3: '*.*',  # all files wildcard
+    -2: 8,  # "Nothing to do" return code
+    -1: 'zip',  # archiver name
     0: ['PkZipC', '-add=update', f'-span={fs_limit}', '-max', '-deflate64', '-silent=progress,banner', '-UTF8', '-path=current'],
     2: "Ambiguous option or command specified.",
     3: "Ambiguous sub-option specified.",
@@ -116,9 +126,9 @@ zip_dict = {
 }
 
 rar_dict = {
-    -3: '*.*',
-    -2: 10,
-    -1: 'rar',
+    -3: '*.*',  # all files wildcard
+    -2: 10,  # "Nothing to do" return code
+    -1: 'rar',  # archiver name
     #0:['Rar','u', '-m5', '-ma5','-msrar;zip;jpg;mov'],
     #0: ['Rar', 'u', '-m5', '-ma5'],
     0: ['Rar', 'u', '-m5', f'-v{fs_limit}b'],
@@ -138,9 +148,9 @@ rar_dict = {
 }
 
 z7_dict = {
-    -3: '*',
-    -2: -1,
-    -1: '7z',
+    -3: '*',  # all files wildcard
+    -2: -1,  # "Nothing to do" return code
+    -1: '7z',  # archiver name
     0: ['7z', 'u', f'-v{fs_limit}b', '-t7z', '-r-', '-mx9', '-x!*\\', '-scsUTF-8'],
     1: 'Warning (Non fatal error(s)). For example, one or more files were locked by some other application, '
        'so they were not compressed.',
@@ -176,6 +186,7 @@ def get_archiver_exe_path(progname):
         print()
         print(f'{sys.argv[0]}: Error:Archiver {progname}.exe not found in the os path')
         sys.exit(err_no_exe)
+        #alx.quitting(err_no_exe,_err[err_no_exe])
 
 
 def arch_err_msg(arch_dict, err_num):
@@ -244,10 +255,12 @@ def get_abs_path(dir_path):
     if not os.path.exists(dir_path):
         print()
         print(f'{sys.argv[0]}: Error: Folder "{dir_path}" not found')
+        #alx.quitting(err_no_path, _err[err_no_path])
         sys.exit(err_no_path)
     elif not os.path.isdir(dir_path):
         print()
         print(f'{sys.argv[0]}: Error: "{dir_path}" is not a folder')
+        #alx.quitting(err_no_dir, _err[err_no_dir])
         sys.exit(err_no_dir)
     else:
         return os.path.abspath(dir_path)
@@ -256,13 +269,13 @@ def get_abs_path(dir_path):
 def get_arcfile_status_msg(dir_path, filename_without_ext, archiver_ret_code):
     filename_with_path = f'{dir_path}\\{filename_without_ext}.{curr_arc_dict[-1]}'
     if not os.path.exists(filename_with_path):
-        return f'Archive File is Not Created: "{filename_with_path}"'
+        return f'Not Created: "{filename_with_path}"'
     elif not os.path.isdir(dir_path):
-        return f'Archive File is Not Created: "{filename_with_path}"'
-    elif archiver_ret_code == 0:
-        return f'Archive File is: "{filename_with_path}"'
+        return f'Not Created: "{filename_with_path}"'
+    #elif archiver_ret_code == 0:
+    #    return f'"{filename_with_path}"'
     else:
-        return f'Archive File Exists: "{filename_with_path}"'
+        return f'"{filename_with_path}"'
 
 
 the_parser = argparse.ArgumentParser(description='Compress the folder tree per folder')
@@ -351,7 +364,8 @@ if __name__ == '__main__': # don't need but let it be
     write_to_log(log_file_handle, f":>> = Script Started")
     write_to_log(log_file_handle, f":<< = Script Finished Successfully")
     write_to_log(log_file_handle, f"!<< = Script Finished Successfully, but the archiver reported errors or warnings")
-    write_to_log(log_file_handle, f":-> = {curr_arc_dict[0][0]} Started")
+    write_to_log(log_file_handle, f":-> = Select folder to archive")
+    write_to_log(log_file_handle, f":=> = Execute {curr_arc_dict[0][0]} Command")
     write_to_log(log_file_handle, f":=0 = {curr_arc_dict[0][0]} Finished with ErrorCode = 0")
     if curr_arc_dict[-2] > 0:
         write_to_log(log_file_handle, f":={curr_arc_dict[-2]} = {curr_arc_dict[0][0]} Archiver Returned 'Nothing to do' "
@@ -372,6 +386,8 @@ if __name__ == '__main__': # don't need but let it be
 
     exe_file = get_archiver_exe_path(curr_arc_dict[0][0])
 
+    tree_start_time = datetime.datetime.now()
+
     for dirName, subdirList, fileList in os.walk(start_dir):
 
         full_path = os.path.abspath(dirName)
@@ -383,69 +399,75 @@ if __name__ == '__main__': # don't need but let it be
         empty_flag = get_is_empty_sign(full_path, fileList)
 
         if empty_flag != "":
-            log_string = f"{empty_flag} {get_time_stamp('l')} {full_path}\n"
+            log_string = f'{empty_flag} {get_time_stamp("l")} "{full_path}"\n'
             write_to_log(log_file_handle, log_string)
         else:
-
             if is_root_dir(full_path):
                 arc_name = preName
             else:
-                #arc_name = preName + "[" + "][".join(rel_path_list) + "]"
                 arc_name = preName + delimit_path(rel_path, args.slash)
 
             storPath = f'{store_dir}\\{arc_name}.{curr_arc_dict[-1]}'
 
             if is_root_dir(full_path):
-                what2zip = f'{rel_path}\\{curr_arc_dict[-3]}'
+                what2arc = f'{rel_path}\\{curr_arc_dict[-3]}'
             else:
-                what2zip = f'.\\{rel_path}\\{curr_arc_dict[-3]}'
+                what2arc = f'.\\{rel_path}\\{curr_arc_dict[-3]}'
 
             os.chdir(parent_dir)  # ! Here!
 
             cmd_list = curr_arc_dict[0].copy()
-            cmd_list.extend([storPath, what2zip])
+            cmd_list.extend([storPath, what2arc])
 
             cmdline = " ".join(cmd_list)
 
             exe_list = cmd_list.copy()
             exe_list[0] = exe_file
 
-            log_string = f"[:->] {get_time_stamp('l')} {os.getcwd()}>{cmdline}"
+            log_string = (f'[:->] {get_time_stamp("l")} "{full_path}"\n'
+                          f'[:=>] {get_time_stamp("l")} {os.getcwd()}>{cmdline}')
             write_to_log(log_file_handle, log_string)
             ###########################################################################################################
+            arc_start_time = datetime.datetime.now()
             result = subprocess.run(exe_list, shell=False)
             if result:
                 curr_ret_code = result.returncode
                 was_running_marker = True
             else:
                 curr_ret_code = -1
+            arc_run_time = alx.get_timedelta_stamp(datetime.datetime.now() - arc_start_time)
             ###########################################################################################################
 
             file_existence_status_str = get_arcfile_status_msg(store_dir, arc_name, curr_ret_code)
 
             if curr_ret_code == 0:
-                log_string = f"[:={curr_ret_code}] {get_time_stamp('l')} {file_existence_status_str}\n"
+                log_string = f"[:={curr_ret_code}] {get_time_stamp('l')} <{arc_run_time}> {file_existence_status_str}\n"
+
             elif curr_ret_code == curr_arc_dict[-2]:
-                log_string = f"[:={curr_ret_code}] {get_time_stamp('l')} {arch_err_msg(curr_arc_dict, curr_ret_code)}, " \
-                             f"{file_existence_status_str}\n"
+                log_string = (f"[:={curr_ret_code}] {get_time_stamp('l')} {arch_err_msg(curr_arc_dict, curr_ret_code)}," 
+                              f" {file_existence_status_str}\n")
                 saved_n2d_rc = curr_arc_dict[-2]
             else:
-                log_string = f"[:!{curr_ret_code}] {get_time_stamp('l')} {arch_err_msg(curr_arc_dict, curr_ret_code)}, " \
-                             f"{file_existence_status_str}\n"
+                log_string = (f"[:!{curr_ret_code}] {get_time_stamp('l')} <{arc_run_time}> "
+                              f"{arch_err_msg(curr_arc_dict, curr_ret_code)}, {file_existence_status_str}\n")
+
                 if curr_ret_code > max_ret_code:
                     max_ret_code = curr_ret_code
             write_to_log(log_file_handle, log_string)
 
     if was_running_marker:
+
+        tree_run_time = alx.get_timedelta_stamp(datetime.datetime.now() - tree_start_time)
+
         if max_ret_code == 0:
             if saved_n2d_rc == curr_arc_dict[-2]:
-                log_string = f"[!<<] {get_time_stamp('l')} Finished with \"Nothing to do\" warnings. Details:" \
+                log_string = f"[!<<] {get_time_stamp('l')} <{tree_run_time}> Finished with \"Nothing to do\" warnings. Details:" \
                              f" {log_name_with_path}"
             else:
-                log_string = f"[:<<] {get_time_stamp('l')} Successfully Finished [RC={max_ret_code}]. Details: " \
+                log_string = f"[:<<] {get_time_stamp('l')} <{tree_run_time}> Successfully Finished [RC={max_ret_code}]. Details: " \
                              f"{log_name_with_path}"
         else:
-            log_string = f"[!<<] {get_time_stamp('l')} Finished with highest error code: [{max_ret_code}]. Details: " \
+            log_string = f"[!<<] {get_time_stamp('l')} <{tree_run_time}> Finished with highest error code: [{max_ret_code}]. Details: " \
                          f"{log_name_with_path}"
     else:
         log_string = f"[:<<] {get_time_stamp('l')} The archiver has never been launched. Details: {log_name_with_path}"
