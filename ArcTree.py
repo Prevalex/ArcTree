@@ -175,7 +175,7 @@ def get_archiver_exe_path(progname):
     else:
         print()
         print(f'{sys.argv[0]}: Error:Archiver {progname}.exe not found in the os path')
-        exit(err_no_exe)
+        sys.exit(err_no_exe)
 
 
 def arch_err_msg(arch_dict, err_num):
@@ -244,11 +244,11 @@ def get_abs_path(dir_path):
     if not os.path.exists(dir_path):
         print()
         print(f'{sys.argv[0]}: Error: Folder "{dir_path}" not found')
-        exit(err_no_path)
+        sys.exit(err_no_path)
     elif not os.path.isdir(dir_path):
         print()
         print(f'{sys.argv[0]}: Error: "{dir_path}" is not a folder')
-        exit(err_no_dir)
+        sys.exit(err_no_dir)
     else:
         return os.path.abspath(dir_path)
 
@@ -454,4 +454,4 @@ if __name__ == '__main__': # don't need but let it be
     write_to_log(log_file_handle, log_string)
 
     log_file_handle.close()
-    exit(max_ret_code)
+    sys.exit(max_ret_code)
